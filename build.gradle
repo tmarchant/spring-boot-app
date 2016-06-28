@@ -1,0 +1,183 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.0.1"
+        classpath 'org.springframework.boot:spring-boot-gradle-plugin:1.3.3.RELEASE'
+    }
+}
+
+allprojects {
+    buildDir = file("${rootDir}/build/${name}")
+    version = "${majorVersion}.${buildNumber}"
+
+    repositories {
+        jcenter()
+    }
+}
+
+task clean(type: Delete) {
+    delete file('build')
+}
+
+subprojects {
+    apply plugin: 'groovy'
+    apply plugin: 'spring-boot'
+    apply plugin: 'kotlin'
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+
+    configurations {
+        testSupport
+        testCompile.extendsFrom testSupport
+    }
+
+    dependencies {
+        compile 'org.projectlombok:lombok:1.16.4'
+        compile 'org.apache.commons:commons-lang3:3.4'
+        compile 'com.google.guava:guava:18.0'
+        compile 'org.apache.commons:commons-collections4:4.0'
+        compile 'commons-io:commons-io:2.4'
+        compile 'org.springframework.boot:spring-boot-starter-logging'
+
+        testSupport 'junit:junit:4.12'
+        testSupport 'org.codehaus.groovy:groovy-all:2.4.6:indy'
+        testSupport 'org.spockframework:spock-core:1.0-groovy-2.4', {
+            exclude module: 'groovy-all'
+        }
+        testSupport 'org.spockframework:spock-spring:1.0-groovy-2.4', {
+            exclude module: 'groovy-all'
+        }
+        testSupport 'com.blogspot.toomuchcoding:spock-subjects-collaborators-extension:1.1.0', {
+            exclude module: 'groovy-all'
+        }
+        testSupport 'org.springframework.boot:spring-boot-starter-test'
+        testSupport 'cglib:cglib:3.2.0'
+        testSupport 'org.objenesis:objenesis:2.1'
+        testSupport 'org.ow2.asm:asm:5.0.3'
+
+        compile "org.jetbrains.kotlin:kotlin-stdlib:1.0.1"
+        testCompile "org.jetbrains.kotlin:kotlin-test:1.0.1"
+        testCompile "org.jetbrains.kotlin:kotlin-test-junit:1.0.1"
+    }
+
+    configurations.all {
+        resolutionStrategy {
+            force 'net.sourceforge.htmlunit:htmlunit:2.18'
+            force 'com.fasterxml.jackson.core:jackson-core:2.6.0'
+            force 'com.fasterxml.jackson.core:jackson-databind:2.6.0'
+            force 'com.fasterxml.jackson.core:jackson-annotations:2.6.0'
+        }
+    }
+
+    tasks.withType(GroovyCompile) {
+        groovyOptions.optimizationOptions.indy = true
+    }
+
+}
+
+task build {
+    group = 'Build'
+    description = 'Builds, tests and packages the application, and packages the journey tests'
+    dependsOn ':app:build', ':functional:test'
+}
+task run(dependsOn: ':app:bootRun') {
+    group = 'Application'
+    description = 'Runs the app (alias for bootRun)'
+}
+
+project(':app') {
+    processResources {
+        doFirst {
+            ext.gitRevision = gitRevision()
+        }
+
+        doLast {
+            File propsFile = new File(sourceSets.main.output.resourcesDir, 'build.properties')
+            Properties props = new Properties()
+            props.setProperty('build.version', project.version.toString())
+            props.setProperty('build.git.revision', ext.gitRevision)
+            props.setProperty('build.machine', InetAddress.getLocalHost().getHostName())
+            props.setProperty('build.time', getDate())
+            props.store(propsFile.newWriter(), null)
+        }
+
+    }
+
+    bootRepackage {
+        mainClass = 'com.johnlewis.contactcentre.Application'
+    }
+
+    jar {
+        baseName = 'contact-centre'
+        exclude 'application.properties'
+        destinationDir = file("${rootDir}/build/libs")
+    }
+
+    dependencies {
+        compile 'org.springframework.boot:spring-boot-starter-web', {
+            exclude module: 'spring-boot-starter-tomcat'
+        }
+        compile 'org.springframework.boot:spring-boot-starter-jetty'
+        compile 'org.springframework.boot:spring-boot-starter-actuator'
+        compile 'pl.allegro.tech.boot:handlebars-spring-boot-starter:0.2.12'
+
+        testCompile 'com.squareup.okhttp:mockwebserver:2.7.0'
+
+        compile 'commons-codec:commons-codec:1.10'
+
+    }
+}
+
+// Configure Test projects
+
+configure(subprojects - project(':app')) {
+    configurations.compile.extendsFrom configurations.testSupport
+}
+
+project(':pages') {
+    dependencies {
+        compile 'org.seleniumhq.selenium:selenium-java:2.46.0'
+        compile 'org.springframework.boot:spring-boot-starter-web', {
+            exclude module: 'spring-boot-starter-tomcat'
+        }
+        compile 'org.springframework.boot:spring-boot-starter-jetty'
+    }
+    bootRepackage.enabled = false
+    sourceSets {
+        webdriver {
+            output.classesDir = sourceSets.main.output.classesDir
+            output.resourcesDir = sourceSets.main.output.resourcesDir
+        }
+        main.compileClasspath += sourceSets.webdriver.output
+    }
+    configurations {
+        webdriverCompile.extendsFrom compile
+    }
+}
+
+project(':functional') {
+    dependencies {
+        compile project(':pages')
+        compile project(':app')
+    }
+    jar.enabled = false
+    bootRepackage.enabled = false
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.13'
+}
+
+def gitRevision() {
+    'git rev-parse --short HEAD'.execute().text.trim()
+}
+
+def getDate() {
+    def date = new Date()
+    def formattedDate = date.format('yyyy-MM-dd HHmmss')
+    return formattedDate
+}
+
+apply from: 'gradle/ide.gradle'

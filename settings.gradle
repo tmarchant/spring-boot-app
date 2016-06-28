@@ -1,0 +1,5 @@
+include 'app'
+
+include 'pages', 'functional'
+project(':pages').projectDir = file('test/pages')
+project(':functional').projectDir = file('test/functional')

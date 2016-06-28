@@ -1,0 +1,3 @@
+moduleName = webdriver-extensions
+moduleVersion = 0.1
+extensionClasses = com.johnlewis.webdriver.WebElementExtensions
